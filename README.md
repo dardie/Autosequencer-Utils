@@ -1,4 +1,4 @@
-# Dardie-AutoSequencer-Utils
+# AutoSequencer-Utils
 
 A powershell module to make working with the Microsoft AppV Autosequencer more Joyful.
 
