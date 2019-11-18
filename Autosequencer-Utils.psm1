@@ -286,27 +286,6 @@ Function Test-AppV () {
 }
 
 # WIP
-Function Create-APPVPackage () {
-    New-CMApplication
-        -Name <String>
-        -Description <String>
-        -Publisher <String>
-        -SoftwareVersion <String>
-        -OptionalReference <String>
-        -ReleaseDate <DateTime>
-        -AutoInstall <Boolean>
-        -Owner <String>
-        -SupportContact <String>
-        -LocalizedName <String>
-        -UserDocumentation <String>
-        -LinkText <String>
-        -LocalizedDescription <String>
-        -Keyword <String>
-        -PrivacyUrl <String>
-        -IsFeatured <Boolean>
-        -IconLocationFile <String>
-        -DisplaySupersedenceInApplicationCatalog <Boolean>
-    }
 Function Create-APPVPackagePlaceHolder () {
 #New-CMApplication
 @{
@@ -344,5 +323,5 @@ Function Create-APPVPackagePlaceHolder () {
     Comment = ""                                    # <String>
     ContentLocation = ""                            # <String>
 }
-
+}
 # new-batchappvsequencerpackages -configfile "C:\scratch\packaging\Blender\blender_config.xml" -vmname seq1903 -outputpath "C:\scratch\packaging\Blender\output"
