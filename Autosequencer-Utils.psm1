@@ -1,4 +1,9 @@
 # Lots of useful info about remoting to VMs here: https://docs.microsoft.com/en-us/virtualization/hyper-v-on-windows/user-guide/powershell-direct
+# Few suggestions I haven't worked in yet:
+# set-localuser appvsequenceruser -PasswordNeverExpires
+# sc.exe config wuauserv start= disabled
+# sc.exe stop wuauserv
+
 
 Function Get-SequencerDataFile () {
     # Return the data file for the autosequencer VM
@@ -32,6 +37,9 @@ Function Get-SequencerDataFile () {
 Function Get-SequencerVMCred () {
     # Return a login credential for the autosequencer VM
     # If more than one autosequencer VM, take an optional VMName parameter to specify which one
+    # Hey BTW if you really need the actual password:
+    # (Get-SequencerVMCred).GetNetworkCredential().Password
+    # FROM the account/context that created the sequencer
     
     param(
         [Parameter(Mandatory = $false)][string]$VMName
@@ -45,6 +53,7 @@ Function Get-SequencerVMCred () {
 }
 
 Function New-SequencerPSSession () {
+    #Requires -RunAsAdministrator
     # Create PSSession to Autosequencer VM
     # If more than one autosequencer VM, take an optional VMName parameter to specify which one
     
@@ -81,11 +90,25 @@ Function Add-SequencerToHosts () {
         $VMName = $SeqFile.Name
     }
 
+    Write-Host "* Disabling password expiry on VM"
     Write-Host "* Disabling Firewall on VM"
     Write-Host "* Disabling TCP/IPv6 on VM"
     Write-Host "* Setting ExecutionPolicy to remotesigned on VM"
     Invoke-command -session $Sess -scriptblock {
-        Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+        Set-LocalUser -Name "appvsequenceruser" -PasswordNeverExpires 1
+        # Big hammer stop updates
+        sc.exe config wuauserv start= disabled
+        sc.exe stop wuauserv
+        $AUSettings = (New-Object -com "Microsoft.Update.AutoUpdate").Settings
+        $AUSettings.NotificationLevel = 1
+        $AUSettings.Save
+        # If you ever need updates back on, uncomment these lines
+        # sc.exe config wuauserv start= auto
+        # sc.exe start wuauserv
+        # $AUSettings = (New-Object -com "Microsoft.Update.AutoUpdate").Settings
+        # $AUSettings.NotificationLevel = 4
+        # $AUSettings.Save
+        # Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
         disable-netadapterbinding -name "Ethernet" -componentid ms_tcpip6 -passthru
         Set-executionPolicy RemoteSigned
     } | select systemname, ifAlias, DisplayName, Enabled > $Null
@@ -96,7 +119,7 @@ Function Add-SequencerToHosts () {
     }
     Write-Host "Adding entry for VM to your hosts file: $VMName -> $IP"
     $SeqHostsEntry = "$IP`t`t$VMName"
-    Copy $hostsfile $hostsfile.backup
+    Copy $hostsfile "$($hostsfile1).backup.$(get-date -format ""dd-mm-yy"")"
     (get-content $hostsfile) -replace "^.+$VMName.*$",  $SeqHostsEntry | set-content  $hostsfile
 
     Write-Host "* Setting timezone of VM to be the same as your computer to lower-cognitive dissonance quotient"
@@ -197,13 +220,13 @@ Function Connect-Sequencer () {
 Export-ModuleMember Connect-Sequencer
 
 Function Reset-Sequencer () {
-    # Reset sequencer to checkpoint 'sequencer-base'
+    # Reset sequencer to checkpoint 'sequencer-base' or specified snapshot.
     # If more than one autosequencer VM, take an optional VMName parameter to specify which one
     param(
-        [Parameter(Mandatory = $false)][string]$VMName
+        [Parameter(Mandatory = $false)][String]$VMName,
+        [Parameter(Mandatory = $false)][String]$Snapshot = "Sequencer-Base",
+        [Parameter(Mandatory = $false)][Switch]$Connect
     )
-
-    $Snapshot = 'sequencer-base'
 
     $SeqFile = Get-SequencerDataFile $VMName
 
@@ -212,6 +235,25 @@ Function Reset-Sequencer () {
     }
 
     Restore-VMSnapshot -Name $snapshot -VMName $VMName -Confirm:$false
+    Start-VM -VMName $VMName
+    if (-not ($Connect)) {
+       Return
+    }
+
+    $timeout = 20;
+    $pollinterval = 3;
+    while ((-not $VMReady) -and ($timeout -gt 0)) {
+        start-sleep $pollinterval
+        $timeout = $timeout -$pollinterval
+        $VMReady = ((Get-VM -VMName $VMName).Heartbeat -like "Ok*")
+    }
+
+    if ($VMReady) {
+        Connect-Sequencer -VMName $VMName
+    } else {
+        Write-Warning "Timed out waiting for VM, no RDP session created"
+    }
+
 }
 Export-ModuleMember Reset-Sequencer
 
@@ -284,6 +326,7 @@ Function Test-AppV () {
         }
     }
 }
+Export-ModuleMember Test-Appv
 
 # WIP
 Function Create-APPVPackagePlaceHolder () {
@@ -324,4 +367,5 @@ Function Create-APPVPackagePlaceHolder () {
     ContentLocation = ""                            # <String>
 }
 }
+
 # new-batchappvsequencerpackages -configfile "C:\scratch\packaging\Blender\blender_config.xml" -vmname seq1903 -outputpath "C:\scratch\packaging\Blender\output"
